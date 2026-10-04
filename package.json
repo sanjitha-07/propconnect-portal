@@ -1,0 +1,15 @@
+{
+  "name": "tenant-landlord-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tenant & Landlord Management System - Modern Property Management Portal with Express & MongoDB Compass Backend",
+  "scripts": {
+    "dev": "node dev.cjs",
+    "frontend": "npm --prefix frontend run dev",
+    "backend": "npm --prefix backend start",
+    "server": "npm --prefix backend start",
+    "seed": "npm --prefix backend run seed",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview"
+  }
+}
