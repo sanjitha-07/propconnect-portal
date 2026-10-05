@@ -441,6 +441,149 @@ export const PropertyImage = mongoose.model("PropertyImage", propertyImageSchema
 export const Favorite = mongoose.model("Favorite", favoriteSchema);
 export const SystemSetting = mongoose.model("SystemSetting", systemSettingSchema);
 
+// 21. FixIt Local Service Provider Model
+const serviceProviderSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    technicianName: { type: String, default: "" },
+    category: { type: String, required: true },
+    price: { type: Number, default: 499 },
+    unit: { type: String, default: "per service" },
+    rating: { type: Number, default: 4.8 },
+    reviewCount: { type: Number, default: 0 },
+    reviews: {
+      type: [
+        {
+          author: { type: String, default: "Customer" },
+          rating: { type: Number, default: 5 },
+          comment: { type: String, default: "" },
+          date: { type: String, default: "" },
+        },
+      ],
+      default: [],
+    },
+    distanceKm: { type: Number, default: 1.5 },
+    availability: { type: String, default: "Available Today" },
+    isAvailable: { type: Boolean, default: true },
+    phone: { type: String, default: "+91 98765 00001" },
+    lat: { type: Number, default: 13.0827 },
+    lng: { type: Number, default: 80.2707 },
+    address: { type: String, default: "Chennai, Tamil Nadu" },
+    skills: { type: [String], default: [] },
+    badge: { type: String, default: "FixIt Verified Pro" },
+    vehicle: { type: String, default: "TVS Apache - TN 01 AB 4321" },
+    experienceYears: { type: Number, default: 5 },
+    image: { type: String, default: "" },
+    description: { type: String, default: "" },
+  },
+  defaultOptions
+);
+
+// 22. Landlord Preferred Provider Model (Per Property & Category)
+const preferredProviderSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true },
+    propertyId: { type: String, required: true },
+    landlordId: { type: String, default: "LDL001" },
+    category: { type: String, required: true }, // "AC", "Electrical", "Plumbing", "Cleaning"
+    providerId: { type: String, required: true },
+    providerName: { type: String, required: true },
+    isSimulatedBusy: { type: Boolean, default: false },
+    backupPolicy: { type: String, default: "auto_recommend_fixit" },
+    customNotes: { type: String, default: "" },
+  },
+  defaultOptions
+);
+
+// 23. FixIt Local Service Booking & Live GPS Dispatch Model
+const fixItBookingSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true },
+    complaintId: { type: String, default: null },
+    propertyId: { type: String, required: true },
+    propertyName: { type: String, default: "" },
+    unit: { type: String, default: "Flat B-204" },
+    tenantId: { type: String, default: "TEN001" },
+    tenantName: { type: String, default: "Tenant" },
+    tenantPhone: { type: String, default: "+91 98700 11223" },
+    landlordId: { type: String, default: "LDL001" },
+    category: { type: String, default: "AC Repair" },
+    serviceTitle: { type: String, default: "AC Repair & Service" },
+    issueDescription: { type: String, default: "" },
+    providerId: { type: String, required: true },
+    providerName: { type: String, required: true },
+    technicianName: { type: String, default: "Technician" },
+    technicianPhone: { type: String, default: "+91 98765 00001" },
+    vehicle: { type: String, default: "TN 01 AB 4321" },
+    status: {
+      type: String,
+      enum: ["Confirmed", "On The Way", "Arrived", "In Progress", "Completed", "Cancelled"],
+      default: "Confirmed",
+    },
+    scheduledDate: { type: String, default: "" },
+    scheduledSlot: { type: String, default: "02:00 PM - 04:00 PM" },
+    amount: { type: Number, default: 800 },
+    paymentStatus: { type: String, default: "Pending" },
+    currentLocation: {
+      lat: { type: Number, default: 13.055 },
+      lng: { type: Number, default: 80.245 },
+    },
+    destinationLocation: {
+      lat: { type: Number, default: 13.0418 },
+      lng: { type: Number, default: 80.2341 },
+      address: { type: String, default: "Sai Kala Apartments, Flat B-204, T. Nagar, Chennai" },
+    },
+    distanceKm: { type: Number, default: 1.8 },
+    etaMinutes: { type: Number, default: 8 },
+    timeline: {
+      type: [
+        {
+          status: { type: String },
+          time: { type: String },
+          note: { type: String },
+        },
+      ],
+      default: [],
+    },
+    rating: { type: Number, default: 0 },
+    reviewText: { type: String, default: "" },
+  },
+  defaultOptions
+);
+
+// 24. Property Maintenance History & Cost Ledger Model
+const propertyMaintenanceHistorySchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true },
+    propertyId: { type: String, required: true },
+    propertyName: { type: String, default: "" },
+    unit: { type: String, default: "Flat B-204" },
+    category: { type: String, required: true }, // "AC Service", "Plumbing Repair", "Electrical", "Cleaning"
+    serviceTitle: { type: String, required: true },
+    description: { type: String, default: "" },
+    cost: { type: Number, required: true },
+    providerName: { type: String, required: true },
+    technicianName: { type: String, default: "" },
+    providerId: { type: String, default: "" },
+    date: { type: String, required: true },
+    status: { type: String, default: "Completed" },
+    invoiceId: { type: String, default: "" },
+    rating: { type: Number, default: 5 },
+    bookingId: { type: String, default: "" },
+    complaintId: { type: String, default: "" },
+  },
+  defaultOptions
+);
+
+export const ServiceProvider = mongoose.model("ServiceProvider", serviceProviderSchema);
+export const PreferredProvider = mongoose.model("PreferredProvider", preferredProviderSchema);
+export const FixItBooking = mongoose.model("FixItBooking", fixItBookingSchema);
+export const PropertyMaintenanceHistory = mongoose.model(
+  "PropertyMaintenanceHistory",
+  propertyMaintenanceHistorySchema
+);
+
 export const models = {
   users: User,
   landlords: Landlord,
@@ -462,4 +605,9 @@ export const models = {
   favorites: Favorite,
   saved_properties: Favorite,
   system_settings: SystemSetting,
+  service_providers: ServiceProvider,
+  preferred_providers: PreferredProvider,
+  fixit_bookings: FixItBooking,
+  maintenance_history: PropertyMaintenanceHistory,
 };
+

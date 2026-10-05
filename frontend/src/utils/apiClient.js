@@ -1,6 +1,8 @@
 // src/utils/apiClient.js
 // Client interface to the Tenant & Landlord Management System REST API / MongoDB Backend
 
+import { FIXIT_PROVIDERS, DEFAULT_PREFERRED_PROVIDERS, INITIAL_MAINTENANCE_HISTORY } from "../data/db.js";
+
 const API_BASE = "/api";
 
 async function request(endpoint, options = {}) {
@@ -756,4 +758,246 @@ export async function saveUserSettings(userId, settingsData) {
     return { success: false, error: err.message };
   }
 }
+
+// -------------------------------------------------------------
+// FixIt Local Unified Service Providers & Dispatches
+// -------------------------------------------------------------
+export async function fetchFixItProviders(category) {
+  try {
+    const query = category && category !== "All" ? `?category=${encodeURIComponent(category)}` : "";
+    return await request(`/service-providers${query}`);
+  } catch (err) {
+    console.warn("fetchFixItProviders fallback to local dataset:", err.message);
+    if (category && category !== "All") {
+      return FIXIT_PROVIDERS.filter((p) => p.category.toLowerCase().includes(category.toLowerCase()));
+    }
+    return FIXIT_PROVIDERS;
+  }
+}
+
+export async function fetchPreferredProviders(propertyId = "TN101") {
+  try {
+    return await request(`/preferred-providers/${encodeURIComponent(propertyId)}`);
+  } catch (err) {
+    console.warn("fetchPreferredProviders fallback to local dataset:", err.message);
+    const local = localStorage.getItem(`tlms_pref_providers_${propertyId}`);
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch {}
+    }
+    return DEFAULT_PREFERRED_PROVIDERS[propertyId] || DEFAULT_PREFERRED_PROVIDERS["TN101"] || {};
+  }
+}
+
+export async function savePreferredProviders(payload) {
+  const { propertyId = "TN101" } = payload;
+  try {
+    const res = await request("/preferred-providers", {
+      method: "POST",
+      body: payload,
+    });
+    return res;
+  } catch (err) {
+    console.warn("savePreferredProviders offline fallback:", err.message);
+    // Update local storage
+    const current = await fetchPreferredProviders(propertyId);
+    current[payload.category] = {
+      providerId: payload.providerId,
+      providerName: payload.providerName,
+      isSimulatedBusy: Boolean(payload.isSimulatedBusy),
+    };
+    try {
+      localStorage.setItem(`tlms_pref_providers_${propertyId}`, JSON.stringify(current));
+    } catch {}
+    return current[payload.category];
+  }
+}
+
+export async function togglePreferredProviderBusy(propertyId = "TN101", category = "AC", isSimulatedBusy) {
+  try {
+    return await request("/preferred-providers/toggle-busy", {
+      method: "POST",
+      body: { propertyId, category, isSimulatedBusy },
+    });
+  } catch (err) {
+    const current = await fetchPreferredProviders(propertyId);
+    if (current[category]) {
+      current[category].isSimulatedBusy = Boolean(isSimulatedBusy);
+    }
+    try {
+      localStorage.setItem(`tlms_pref_providers_${propertyId}`, JSON.stringify(current));
+    } catch {}
+    return { success: true, isSimulatedBusy: Boolean(isSimulatedBusy) };
+  }
+}
+
+export async function fetchFixItBookings(filter = {}) {
+  try {
+    const params = new URLSearchParams(filter).toString();
+    return await request(`/fixit-bookings${params ? `?${params}` : ""}`);
+  } catch (err) {
+    console.warn("fetchFixItBookings offline fallback:", err.message);
+    const local = localStorage.getItem("tlms_fixit_bookings");
+    return local ? JSON.parse(local) : [];
+  }
+}
+
+export async function fetchFixItBookingById(id) {
+  try {
+    return await request(`/fixit-bookings/${encodeURIComponent(id)}`);
+  } catch (err) {
+    const bookings = await fetchFixItBookings();
+    return bookings.find((b) => b.id === id) || null;
+  }
+}
+
+export async function createFixItBooking(bookingData) {
+  try {
+    const res = await request("/fixit-bookings", {
+      method: "POST",
+      body: bookingData,
+    });
+    return res;
+  } catch (err) {
+    console.warn("createFixItBooking offline fallback:", err.message);
+    const id = `BK_FIX_${Math.floor(1000 + Math.random() * 9000)}`;
+    const timeNow = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const localBooking = {
+      id,
+      ...bookingData,
+      status: "Confirmed",
+      amount: Number(bookingData.amount || 800),
+      distanceKm: 1.8,
+      etaMinutes: 8,
+      currentLocation: { lat: 13.055, lng: 80.245 },
+      destinationLocation: { lat: 13.0418, lng: 80.2341, address: "Sai Kala Apartments, Flat B-204, T. Nagar, Chennai" },
+      timeline: [{ status: "Confirmed", time: timeNow, note: "Technician assigned & dispatched" }],
+    };
+    const current = await fetchFixItBookings();
+    current.unshift(localBooking);
+    try {
+      localStorage.setItem("tlms_fixit_bookings", JSON.stringify(current));
+    } catch {}
+    return localBooking;
+  }
+}
+
+export async function updateFixItBookingStatus(id, { status, lat, lng, note }) {
+  try {
+    return await request(`/fixit-bookings/${encodeURIComponent(id)}/status`, {
+      method: "PUT",
+      body: { status, lat, lng, note },
+    });
+  } catch (err) {
+    console.warn("updateFixItBookingStatus offline fallback:", err.message);
+    const bookings = await fetchFixItBookings();
+    const found = bookings.find((b) => b.id === id);
+    if (found) {
+      found.status = status;
+      if (lat && lng) found.currentLocation = { lat: Number(lat), lng: Number(lng) };
+      if (status === "On The Way") {
+        found.etaMinutes = 6;
+        found.distanceKm = 1.4;
+      } else if (status === "Arrived") {
+        found.etaMinutes = 0;
+        found.distanceKm = 0;
+      } else if (status === "Completed") {
+        found.paymentStatus = "Paid";
+      }
+      const timeNow = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      found.timeline.push({ status, time: timeNow, note: note || `Status updated to ${status}` });
+      try {
+        localStorage.setItem("tlms_fixit_bookings", JSON.stringify(bookings));
+      } catch {}
+      return found;
+    }
+    return { id, status };
+  }
+}
+
+export async function submitFixItReview(id, { rating = 5, reviewText = "" }) {
+  try {
+    return await request(`/fixit-bookings/${encodeURIComponent(id)}/review`, {
+      method: "POST",
+      body: { rating, reviewText },
+    });
+  } catch (err) {
+    console.warn("submitFixItReview offline fallback:", err.message);
+    const booking = await fetchFixItBookingById(id);
+    const propId = booking?.propertyId || "TN101";
+    const dateStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const historyEntry = {
+      id: `MH_${propId}_${Date.now()}`,
+      propertyId: propId,
+      propertyName: booking?.propertyName || "Sai Kala Apartments - Flat 302",
+      unit: booking?.unit || "Flat B-204",
+      category: booking?.category || "AC Service",
+      serviceTitle: booking?.serviceTitle || "AC Repair & Service",
+      description: reviewText || booking?.issueDescription || "Service completed via FixIt Local",
+      cost: Number(booking?.amount || 800),
+      providerName: booking?.providerName || "Kumar AC Services",
+      technicianName: booking?.technicianName || "Kumar S.",
+      providerId: booking?.providerId || "PROV_AC_01",
+      date: dateStr,
+      status: "Completed",
+      invoiceId: `INV-FIX-${Math.floor(1000 + Math.random() * 9000)}`,
+      rating: Number(rating),
+      bookingId: id,
+    };
+    await addPropertyMaintenanceHistory(propId, historyEntry);
+    return { success: true, booking, historyEntry };
+  }
+}
+
+// -------------------------------------------------------------
+// Property Maintenance History Ledger (Exact Flat B-204 Ledger)
+// -------------------------------------------------------------
+export async function fetchPropertyMaintenanceHistory(propertyId = "TN101") {
+  try {
+    return await request(`/properties/${encodeURIComponent(propertyId)}/maintenance-history`);
+  } catch (err) {
+    console.warn("fetchPropertyMaintenanceHistory offline fallback:", err.message);
+    const stored = localStorage.getItem(`tlms_maintenance_history_${propertyId}`);
+    const records = stored ? JSON.parse(stored) : (INITIAL_MAINTENANCE_HISTORY.filter(m => m.propertyId === propertyId || propertyId === "TN101") || []);
+    let totalSpend = 0;
+    const categoryBreakdown = {};
+    const providerStats = {};
+    records.forEach(r => {
+      const c = Number(r.cost || 0);
+      totalSpend += c;
+      const cat = r.category || "General";
+      categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + c;
+      const prov = r.providerName || "Technician";
+      providerStats[prov] = (providerStats[prov] || 0) + 1;
+    });
+    return {
+      propertyId,
+      totalSpendLast6Months: totalSpend,
+      totalRecords: records.length,
+      averageRating: 4.9,
+      categoryBreakdown,
+      providerStats,
+      records,
+    };
+  }
+}
+
+export async function addPropertyMaintenanceHistory(propertyId = "TN101", entry) {
+  try {
+    return await request(`/properties/${encodeURIComponent(propertyId)}/maintenance-history`, {
+      method: "POST",
+      body: entry,
+    });
+  } catch (err) {
+    console.warn("addPropertyMaintenanceHistory offline fallback:", err.message);
+    const currentData = await fetchPropertyMaintenanceHistory(propertyId);
+    const records = [entry, ...(currentData.records || [])];
+    try {
+      localStorage.setItem(`tlms_maintenance_history_${propertyId}`, JSON.stringify(records));
+    } catch {}
+    return entry;
+  }
+}
+
 

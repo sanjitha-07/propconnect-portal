@@ -44,6 +44,8 @@ export const translations = {
     search: "Search tenant…",
     month: "Month",
     dashboard: "Dashboard",
+    analytics: "Analytics & Reports",
+    analyticsSubtitle: "Real-time portfolio yields, occupancy intelligence, revenue cash flow, and operational SLA tracking",
     properties: "Properties",
     activeLeases: "Active Leases",
     monthlyRent: "Monthly Rent",
@@ -122,6 +124,7 @@ export const translations = {
     cancel: "Cancel",
     leasesTable: "Leases",
     maintenanceTable: "Maintenance Requests",
+    fixitServices: "FixIt Local Services",
     depositsTable: "Security Deposits",
     utilityBillsTable: "Utility Bills",
     expensesTable: "Expenses",
@@ -349,6 +352,12 @@ export const translations = {
     botUtilityIntro: "⚡ Utility & Electricity (TNEB) Bills:",
     botDepositIntro: "🛡️ Security Deposit Summary:",
     botHelpIntro: "🤖 How I can help you:",
+    "{count} Total": "{count} Total",
+    "Showing {start} to {end} of {total} records": "Showing {start} to {end} of {total} records",
+    "Page {current} of {total}": "Page {current} of {total}",
+    "Prev": "Prev",
+    "Next": "Next",
+    "Clear search": "Clear search",
   },
 
   ta: {
@@ -396,6 +405,8 @@ export const translations = {
     search: "குடியிருப்பாளரைத் தேடு…",
     month: "மாதம்",
     dashboard: "டாஷ்போர்டு",
+    analytics: "பகுப்பாய்வு & அறிக்கைகள்",
+    analyticsSubtitle: "நிகழ்நேர சொத்து வருவாய், ஆக்கிரமிப்பு பகுப்பாய்வு, பணப்புழக்கம் மற்றும் பராமரிப்பு SLA கண்காணிப்பு",
     properties: "சொத்துக்கள்",
     activeLeases: "செயலில் உள்ள குத்தகைகள்",
     monthlyRent: "மாத வாடகை",
@@ -472,6 +483,7 @@ export const translations = {
     cancel: "ரத்து செய்",
     leasesTable: "குத்தகைகள்",
     maintenanceTable: "பராமரிப்பு கோரிக்கைகள்",
+    fixitServices: "FixIt உள்ளூர் சேவைகள்",
     depositsTable: "பாதுகாப்பு வைப்புத்தொகைகள்",
     utilityBillsTable: "பயன்பாட்டு பில்கள்",
     expensesTable: "செலவுகள்",
@@ -814,11 +826,43 @@ export const translations = {
     "+ Add Property": "+ சொத்தைச் சேர்க்க",
     "Govt Reg": "அரசு பதிவு எண்",
     "invoices found": "விலைப்பட்டியல்கள் உள்ளன",
+    "{count} Total": "மொத்தம் {count}",
+    "Showing {start} to {end} of {total} records": "{total} பதிவுகளில் {start} முதல் {end} வரை காட்டப்படுகிறது",
+    "Page {current} of {total}": "பக்கம் {current} / {total}",
+    "Prev": "முந்தைய",
+    "Next": "அடுத்தது",
+    "Clear search": "தேடலை அழி",
   },
 };
 
-export function translate(language, key, fallback) {
-  if (translations[language]?.[key]) return translations[language][key];
-  if (translations.en?.[key]) return translations.en[key];
-  return fallback !== undefined ? fallback : key;
+export function translate(language, key, paramsOrFallback) {
+  if (key === undefined || key === null) return "";
+  const keyStr = typeof key === "string" ? key : String(key);
+
+  let raw = translations[language]?.[keyStr] ?? translations.en?.[keyStr];
+
+  let params = null;
+  let fallback = keyStr;
+
+  if (paramsOrFallback !== undefined) {
+    if (typeof paramsOrFallback === "object" && paramsOrFallback !== null) {
+      params = paramsOrFallback;
+    } else {
+      fallback = String(paramsOrFallback);
+    }
+  }
+
+  let text = raw !== undefined ? raw : fallback;
+
+  if (typeof text !== "string") {
+    text = String(text ?? keyStr);
+  }
+
+  if (params) {
+    for (const [pKey, pVal] of Object.entries(params)) {
+      text = text.replaceAll(`{${pKey}}`, pVal !== undefined && pVal !== null ? String(pVal) : "");
+    }
+  }
+
+  return text;
 }

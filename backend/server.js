@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+// Backend Server for PropConnect Portal
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
@@ -26,6 +27,10 @@ import {
   PropertyImage,
   Favorite,
   SystemSetting,
+  ServiceProvider,
+  PreferredProvider,
+  FixItBooking,
+  PropertyMaintenanceHistory,
   models,
 } from "./models/index.js";
 import { rankProperties } from "./utils/matchingEngine.js";
@@ -973,8 +978,766 @@ app.delete("/api/complaints/:id", async (req, res) => {
   }
 });
 
+// =============================================================
+// FIXIT LOCAL UNIFIED SERVICE & PROPERTY MAINTENANCE APIs
+// =============================================================
+
+// Fallback seed list for FixIt Local verified providers in Chennai / Tamil Nadu
+const FALLBACK_FIXIT_PROVIDERS = [
+  {
+    id: "PROV_AC_01",
+    name: "Kumar AC Services",
+    technicianName: "Kumar S.",
+    category: "AC Repair",
+    price: 800,
+    unit: "per service",
+    rating: 4.9,
+    reviewCount: 68,
+    distanceKm: 1.2,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00001",
+    lat: 13.0425,
+    lng: 80.2335,
+    address: "14, Usman Road, T. Nagar, Chennai",
+    skills: ["AC Repair", "Jet Pump Cleaning", "Gas Refill", "Inverter AC"],
+    badge: "⭐ Landlord Preferred Pro",
+    vehicle: "TVS Apache - TN 01 AB 4321",
+    experienceYears: 8,
+    description: "Certified HVAC & refrigeration technician specializing in residential split and window units.",
+    reviews: [
+      { author: "Karthik Raja (Landlord)", rating: 5, comment: "Fixed Flat 302 AC quickly. Super clean job!", date: "04 Oct 2026" },
+      { author: "Suresh Babu", rating: 5, comment: "Punctual and very polite technician.", date: "15 Sep 2026" },
+    ],
+  },
+  {
+    id: "PROV_AC_02",
+    name: "Arun AC Care & Service",
+    technicianName: "Arun Kumar",
+    category: "AC Repair",
+    price: 750,
+    unit: "per service",
+    rating: 4.8,
+    reviewCount: 42,
+    distanceKm: 2.4,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00002",
+    lat: 13.085,
+    lng: 80.21,
+    address: "88, 2nd Avenue, Anna Nagar, Chennai",
+    skills: ["AC Service", "Coil Leakage", "Duct Cleaning"],
+    badge: "FixIt Verified Pro",
+    vehicle: "Honda Activa - TN 02 CD 5678",
+    experienceYears: 6,
+    description: "Master cooling engineer with quick response across central Chennai.",
+    reviews: [
+      { author: "Ramesh K.", rating: 5, comment: "Good service and transparent pricing.", date: "28 Sep 2026" },
+    ],
+  },
+  {
+    id: "PROV_AC_03",
+    name: "CoolTech Express HVAC",
+    technicianName: "Balaji V.",
+    category: "AC Repair",
+    price: 850,
+    unit: "per service",
+    rating: 4.7,
+    reviewCount: 54,
+    distanceKm: 3.2,
+    availability: "Available Tomorrow",
+    isAvailable: true,
+    phone: "+91 98765 00003",
+    lat: 13.01,
+    lng: 80.22,
+    address: "Guindy Industrial Estate, Chennai",
+    skills: ["Split AC", "Multi-split", "VRF Units"],
+    badge: "Certified Pro",
+    vehicle: "Bajaj Pulsar - TN 09 EF 9012",
+    experienceYears: 7,
+    description: "Industrial & residential HVAC installations with warranty.",
+    reviews: [
+      { author: "Anitha S.", rating: 4.5, comment: "Thorough duct cleaning.", date: "12 Aug 2026" },
+    ],
+  },
+  {
+    id: "PROV_PL_01",
+    name: "Raj Plumbing & Sanitary",
+    technicianName: "Rajendran M.",
+    category: "Plumbing",
+    price: 450,
+    unit: "per visit",
+    rating: 4.8,
+    reviewCount: 62,
+    distanceKm: 1.1,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00010",
+    lat: 13.04,
+    lng: 80.235,
+    address: "T. Nagar Market Road, Chennai",
+    skills: ["Tap Repair", "Pipe Leakage", "Flush Tank", "Drainage Trap"],
+    badge: "⭐ Landlord Preferred Pro",
+    vehicle: "Hero Splendor - TN 01 GH 3456",
+    experienceYears: 9,
+    description: "Expert domestic plumber handling concealed bathroom line repairs and drainage.",
+    reviews: [
+      { author: "Divya Priya", rating: 5, comment: "Resolved water leakage in 20 minutes.", date: "14 Aug 2026" },
+    ],
+  },
+  {
+    id: "PROV_PL_02",
+    name: "Riyas Plumbing Solutions",
+    technicianName: "Riyas Mohamed",
+    category: "Plumbing",
+    price: 400,
+    unit: "per visit",
+    rating: 4.7,
+    reviewCount: 36,
+    distanceKm: 2.8,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00011",
+    lat: 13.0418,
+    lng: 80.2341,
+    address: "14, Usman Road, T. Nagar, Chennai",
+    skills: ["Pipe Routing", "Water Meter", "Leak Detection"],
+    badge: "FixIt Verified Pro",
+    vehicle: "Honda Shine - TN 01 JK 7890",
+    experienceYears: 7,
+    description: "Rapid leakage fixes and sanitary fitting installation.",
+    reviews: [],
+  },
+  {
+    id: "PROV_EL_01",
+    name: "Suresh Electrical Works",
+    technicianName: "Suresh Kannan",
+    category: "Electrical",
+    price: 600,
+    unit: "per visit / diagnosis",
+    rating: 4.9,
+    reviewCount: 51,
+    distanceKm: 1.5,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00020",
+    lat: 13.0067,
+    lng: 80.2206,
+    address: "23, Sardar Patel Rd, Guindy, Chennai",
+    skills: ["MCB Tripping", "Short Circuit", "Inverter Wiring", "Switchboard"],
+    badge: "⭐ Landlord Preferred Pro",
+    vehicle: "TVS Raider - TN 07 LM 1122",
+    experienceYears: 10,
+    description: "Licensed electrician with A-grade government wireman certification.",
+    reviews: [
+      { author: "Karthik Raja", rating: 5, comment: "Tripping problem identified immediately.", date: "02 Jul 2026" },
+    ],
+  },
+  {
+    id: "PROV_EL_02",
+    name: "Yaazh Electrical & Power",
+    technicianName: "Yaazh S.",
+    category: "Electrical",
+    price: 550,
+    unit: "per visit",
+    rating: 4.7,
+    reviewCount: 34,
+    distanceKm: 3.1,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00021",
+    lat: 13.015,
+    lng: 80.23,
+    address: "Saidapet West, Chennai",
+    skills: ["Fan Installation", "LED Concealed", "Fuse Repair"],
+    badge: "FixIt Verified Pro",
+    vehicle: "Yamaha FZ - TN 02 NP 3344",
+    experienceYears: 8,
+    description: "Complete domestic electrical repairs and appliance setups.",
+    reviews: [],
+  },
+  {
+    id: "PROV_CL_01",
+    name: "CleanPro Facility Management",
+    technicianName: "Anand & Team",
+    category: "Cleaning",
+    price: 300,
+    unit: "per room",
+    rating: 4.9,
+    reviewCount: 74,
+    distanceKm: 1.8,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00030",
+    lat: 13.0334,
+    lng: 80.269,
+    address: "5B, Luz Church Rd, Mylapore, Chennai",
+    skills: ["Deep Cleaning", "Kitchen Degrease", "Bathroom Acid Wash", "Balcony"],
+    badge: "⭐ Landlord Preferred Pro",
+    vehicle: "Tata Ace Delivery Van - TN 05 QR 5566",
+    experienceYears: 6,
+    description: "Hospital-grade sanitation and high-pressure floor buffing team.",
+    reviews: [
+      { author: "Divya Priya", rating: 5, comment: "Apartment looks sparkling clean!", date: "20 May 2026" },
+    ],
+  },
+  {
+    id: "PROV_CL_02",
+    name: "SparkleHome Cleaning",
+    technicianName: "Priya Ramesh",
+    category: "Cleaning",
+    price: 350,
+    unit: "per room",
+    rating: 4.8,
+    reviewCount: 49,
+    distanceKm: 3.5,
+    availability: "Available Today",
+    isAvailable: true,
+    phone: "+91 98765 00031",
+    lat: 13.02,
+    lng: 80.25,
+    address: "Alwarpet, Chennai",
+    skills: ["Mechanized Scrubbing", "Glass Polish", "Steam Sanitization"],
+    badge: "FixIt Verified Pro",
+    vehicle: "Maruti Eeco - TN 06 ST 7788",
+    experienceYears: 5,
+    description: "Professional apartment move-in and deep seasonal sanitation.",
+    reviews: [],
+  },
+];
+
+// Fallback in-memory stores in case MongoDB is in mock/standby mode
+const inMemoryPreferred = {
+  TN101: {
+    AC: { providerId: "PROV_AC_01", providerName: "Kumar AC Services", isSimulatedBusy: false },
+    Electrical: { providerId: "PROV_EL_01", providerName: "Suresh Electrical Works", isSimulatedBusy: false },
+    Plumbing: { providerId: "PROV_PL_01", providerName: "Raj Plumbing & Sanitary", isSimulatedBusy: false },
+    Cleaning: { providerId: "PROV_CL_01", providerName: "CleanPro Facility Management", isSimulatedBusy: false },
+  },
+};
+
+const inMemoryMaintenanceHistory = {
+  TN101: [
+    {
+      id: "MH_TN101_01",
+      propertyId: "TN101",
+      propertyName: "Sai Kala Apartments - Flat 302",
+      unit: "Flat B-204",
+      date: "04 Oct 2026",
+      category: "AC Service",
+      serviceTitle: "AC Jet Pump Service & Gas Check",
+      cost: 800,
+      providerName: "Kumar AC Services",
+      technicianName: "Kumar S.",
+      providerId: "PROV_AC_01",
+      status: "Completed",
+      rating: 5.0,
+      invoiceId: "INV-FIX-8841",
+      description: "Indoor unit jet pressure wash, filter unclogged, 45 PSI refrigerant topped up.",
+    },
+    {
+      id: "MH_TN101_02",
+      propertyId: "TN101",
+      propertyName: "Sai Kala Apartments - Flat 302",
+      unit: "Flat B-204",
+      date: "14 Aug 2026",
+      category: "Plumbing Repair",
+      serviceTitle: "Master Bath Concealed Pipe Trap Replacement",
+      cost: 450,
+      providerName: "Raj Plumbing & Sanitary",
+      technicianName: "Rajendran M.",
+      providerId: "PROV_PL_01",
+      status: "Completed",
+      rating: 4.8,
+      invoiceId: "INV-FIX-7729",
+      description: "Replaced degraded PVC bottle trap under basin and tightened supply valve.",
+    },
+    {
+      id: "MH_TN101_03",
+      propertyId: "TN101",
+      propertyName: "Sai Kala Apartments - Flat 302",
+      unit: "Flat B-204",
+      date: "02 Jul 2026",
+      category: "Electrical",
+      serviceTitle: "Distribution Board MCB Replacement & Load Balancing",
+      cost: 600,
+      providerName: "Suresh Electrical Works",
+      technicianName: "Suresh Kannan",
+      providerId: "PROV_EL_01",
+      status: "Completed",
+      rating: 4.9,
+      invoiceId: "INV-FIX-6610",
+      description: "Replaced 32A C-curve MCB tripping under geyser load and balanced phase neutral.",
+    },
+    {
+      id: "MH_TN101_04",
+      propertyId: "TN101",
+      propertyName: "Sai Kala Apartments - Flat 302",
+      unit: "Flat B-204",
+      date: "20 May 2026",
+      category: "Cleaning",
+      serviceTitle: "Deep Kitchen Degreasing & Balcony Scrubbing",
+      cost: 300,
+      providerName: "CleanPro Facility Management",
+      technicianName: "Anand & Team",
+      providerId: "PROV_CL_01",
+      status: "Completed",
+      rating: 5.0,
+      invoiceId: "INV-FIX-5502",
+      description: "Industrial vacuuming of balcony sliding channels and stove backsplash sanitation.",
+    },
+  ],
+};
+
+const inMemoryBookings = [];
+
+// 1. Get FixIt Service Providers (filter by category, e.g. AC Repair)
+app.get("/api/service-providers", async (req, res) => {
+  try {
+    const { category, search } = req.query;
+    let filter = {};
+    if (category && category !== "All") {
+      filter.category = new RegExp(category, "i");
+    }
+    if (search) {
+      filter.$or = [
+        { name: new RegExp(search, "i") },
+        { skills: new RegExp(search, "i") },
+      ];
+    }
+
+    let rows = await ServiceProvider.find(filter).lean();
+    if (!rows || rows.length === 0) {
+      // Return filtered fallback list
+      let fallback = FALLBACK_FIXIT_PROVIDERS;
+      if (category && category !== "All") {
+        fallback = fallback.filter((p) =>
+          p.category.toLowerCase().includes(category.toLowerCase())
+        );
+      }
+      return res.json(fallback);
+    }
+    res.json(rows);
+  } catch (err) {
+    res.json(FALLBACK_FIXIT_PROVIDERS);
+  }
+});
+
+// 2. Get Landlord Preferred Providers for a Property
+app.get("/api/preferred-providers/:propertyId", async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const rows = await PreferredProvider.find({ propertyId }).lean();
+    if (rows && rows.length > 0) {
+      const mapping = {};
+      rows.forEach((r) => {
+        mapping[r.category] = r;
+      });
+      return res.json(mapping);
+    }
+  } catch {}
+
+  // Fallback to in-memory mapping
+  res.json(inMemoryPreferred[propertyId] || inMemoryPreferred["TN101"] || {});
+});
+
+// 3. Set or Update Landlord Preferred Provider
+app.post("/api/preferred-providers", async (req, res) => {
+  try {
+    const { propertyId, landlordId, category, providerId, providerName, isSimulatedBusy } = req.body;
+    if (!propertyId || !category || !providerId) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const id = `PREF_${propertyId}_${category}`;
+    let doc = await PreferredProvider.findOneAndUpdate(
+      { propertyId, category },
+      {
+        $set: {
+          id,
+          propertyId,
+          landlordId: landlordId || "LDL001",
+          category,
+          providerId,
+          providerName,
+          isSimulatedBusy: Boolean(isSimulatedBusy),
+        },
+      },
+      { upsert: true, new: true }
+    ).lean();
+
+    if (!inMemoryPreferred[propertyId]) inMemoryPreferred[propertyId] = {};
+    inMemoryPreferred[propertyId][category] = {
+      providerId,
+      providerName,
+      isSimulatedBusy: Boolean(isSimulatedBusy),
+    };
+
+    res.json(doc || inMemoryPreferred[propertyId][category]);
+  } catch (err) {
+    const { propertyId, category, providerId, providerName, isSimulatedBusy } = req.body;
+    if (!inMemoryPreferred[propertyId]) inMemoryPreferred[propertyId] = {};
+    inMemoryPreferred[propertyId][category] = {
+      providerId,
+      providerName,
+      isSimulatedBusy: Boolean(isSimulatedBusy),
+    };
+    res.json(inMemoryPreferred[propertyId][category]);
+  }
+});
+
+// 4. Toggle Preferred Provider Busy State (for interactive testing & viva demo)
+app.post("/api/preferred-providers/toggle-busy", async (req, res) => {
+  try {
+    const { propertyId = "TN101", category = "AC", isSimulatedBusy } = req.body;
+    await PreferredProvider.updateOne(
+      { propertyId, category },
+      { $set: { isSimulatedBusy: Boolean(isSimulatedBusy) } }
+    );
+    if (!inMemoryPreferred[propertyId]) inMemoryPreferred[propertyId] = {};
+    if (!inMemoryPreferred[propertyId][category]) {
+      inMemoryPreferred[propertyId][category] = {
+        providerId: "PROV_AC_01",
+        providerName: "Kumar AC Services",
+      };
+    }
+    inMemoryPreferred[propertyId][category].isSimulatedBusy = Boolean(isSimulatedBusy);
+
+    res.json({
+      success: true,
+      propertyId,
+      category,
+      isSimulatedBusy: Boolean(isSimulatedBusy),
+      message: `Preferred provider for ${category} is now ${isSimulatedBusy ? "marked BUSY (FixIt will auto-recommend alternatives)" : "AVAILABLE"}!`,
+    });
+  } catch (err) {
+    res.json({ success: true, isSimulatedBusy: Boolean(req.body.isSimulatedBusy) });
+  }
+});
+
+// 5. Get FixIt Service Bookings
+app.get("/api/fixit-bookings", async (req, res) => {
+  try {
+    const { propertyId, tenantId, status } = req.query;
+    const filter = {};
+    if (propertyId) filter.propertyId = propertyId;
+    if (tenantId) filter.tenantId = tenantId;
+    if (status) filter.status = status;
+
+    let rows = await FixItBooking.find(filter).sort({ id: -1 }).lean();
+    if (!rows || rows.length === 0) {
+      rows = inMemoryBookings;
+    }
+    res.json(rows);
+  } catch (err) {
+    res.json(inMemoryBookings);
+  }
+});
+
+// 6. Get Single Booking with Live GPS details
+app.get("/api/fixit-bookings/:id", async (req, res) => {
+  try {
+    const b = await FixItBooking.findOne({ id: req.params.id }).lean();
+    if (b) return res.json(b);
+  } catch {}
+
+  const mem = inMemoryBookings.find((x) => x.id === req.params.id);
+  if (mem) return res.json(mem);
+  res.status(404).json({ error: "Booking not found" });
+});
+
+// 7. Create New FixIt Service Booking
+app.post("/api/fixit-bookings", async (req, res) => {
+  try {
+    const b = req.body;
+    const bookingId = b.id || `BK_FIX_${Math.floor(1000 + Math.random() * 9000)}`;
+    const timeNow = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    const newBooking = {
+      id: bookingId,
+      complaintId: b.complaintId || null,
+      propertyId: b.propertyId || "TN101",
+      propertyName: b.propertyName || "Sai Kala Apartments - Flat 302",
+      unit: b.unit || "Flat B-204",
+      tenantId: b.tenantId || "TEN001",
+      tenantName: b.tenantName || "Divya Priya",
+      tenantPhone: b.tenantPhone || "+91 98700 11223",
+      landlordId: b.landlordId || "LDL001",
+      category: b.category || "AC Repair",
+      serviceTitle: b.serviceTitle || "AC Repair & Service",
+      issueDescription: b.issueDescription || "AC cooling problem reported",
+      providerId: b.providerId || "PROV_AC_01",
+      providerName: b.providerName || "Kumar AC Services",
+      technicianName: b.technicianName || "Kumar S.",
+      technicianPhone: b.technicianPhone || "+91 98765 00001",
+      vehicle: b.vehicle || "TVS Apache - TN 01 AB 4321",
+      status: "Confirmed",
+      scheduledDate: b.scheduledDate || new Date().toISOString().split("T")[0],
+      scheduledSlot: b.scheduledSlot || "02:00 PM - 04:00 PM",
+      amount: Number(b.amount || 800),
+      paymentStatus: "Pending",
+      currentLocation: {
+        lat: 13.055,
+        lng: 80.245,
+      },
+      destinationLocation: {
+        lat: 13.0418,
+        lng: 80.2341,
+        address: "Sai Kala Apartments, Flat B-204, T. Nagar, Chennai",
+      },
+      distanceKm: 1.8,
+      etaMinutes: 8,
+      timeline: [
+        { status: "Confirmed", time: timeNow, note: "Technician assigned & dispatch order created" },
+      ],
+      rating: 0,
+      reviewText: "",
+    };
+
+    let createdDoc;
+    try {
+      createdDoc = await FixItBooking.create(newBooking);
+    } catch {
+      createdDoc = newBooking;
+    }
+
+    inMemoryBookings.unshift(newBooking);
+
+    // If linked to a complaint, update complaint status to "FixIt Dispatched"
+    if (b.complaintId) {
+      try {
+        await Complaint.findOneAndUpdate(
+          { id: b.complaintId },
+          { $set: { status: "FixIt Dispatched" } }
+        );
+      } catch {}
+    }
+
+    // Create Notification for Landlord and Tenant
+    try {
+      await Notification.create({
+        id: `NOTIF_${Date.now()}`,
+        userId: b.tenantId || "TEN001",
+        title: "🚗 FixIt Pro Dispatched!",
+        message: `${newBooking.providerName} technician ${newBooking.technicianName} confirmed for ${newBooking.unit}. Live tracking available.`,
+        time: "Just now",
+        type: "success",
+        isRead: false,
+      });
+    } catch {}
+
+    res.status(201).json(createdDoc || newBooking);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. Update FixIt Booking Status (Advancing lifecycle: Confirmed -> On The Way -> Arrived -> In Progress -> Completed)
+app.put("/api/fixit-bookings/:id/status", async (req, res) => {
+  const { id } = req.params;
+  const { status, lat, lng, note } = req.body;
+  const timeNow = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  try {
+    const existing = await FixItBooking.findOne({ id });
+    if (existing) {
+      existing.status = status;
+      if (lat && lng) {
+        existing.currentLocation = { lat: Number(lat), lng: Number(lng) };
+      }
+      if (status === "On The Way") {
+        existing.etaMinutes = 6;
+        existing.distanceKm = 1.4;
+      } else if (status === "Arrived") {
+        existing.etaMinutes = 0;
+        existing.distanceKm = 0;
+      } else if (status === "Completed") {
+        existing.paymentStatus = "Paid";
+      }
+
+      existing.timeline.push({
+        status,
+        time: timeNow,
+        note: note || `Status updated to ${status}`,
+      });
+
+      await existing.save();
+      return res.json(existing);
+    }
+  } catch {}
+
+  // In-memory fallback
+  const mem = inMemoryBookings.find((x) => x.id === id);
+  if (mem) {
+    mem.status = status;
+    if (lat && lng) mem.currentLocation = { lat: Number(lat), lng: Number(lng) };
+    if (status === "On The Way") {
+      mem.etaMinutes = 6;
+      mem.distanceKm = 1.4;
+    } else if (status === "Arrived") {
+      mem.etaMinutes = 0;
+      mem.distanceKm = 0;
+    } else if (status === "Completed") {
+      mem.paymentStatus = "Paid";
+    }
+    mem.timeline.push({
+      status,
+      time: timeNow,
+      note: note || `Status updated to ${status}`,
+    });
+    return res.json(mem);
+  }
+
+  res.status(404).json({ error: "Booking not found" });
+});
+
+// 9. Review FixIt Booking & Auto-Save to Property Maintenance History Ledger!
+app.post("/api/fixit-bookings/:id/review", async (req, res) => {
+  const { id } = req.params;
+  const { rating = 5, reviewText = "Great service!" } = req.body;
+  const dateStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+  let booking = null;
+  try {
+    booking = await FixItBooking.findOne({ id });
+    if (booking) {
+      booking.rating = Number(rating);
+      booking.reviewText = reviewText;
+      booking.status = "Completed";
+      await booking.save();
+    }
+  } catch {}
+
+  if (!booking) {
+    booking = inMemoryBookings.find((x) => x.id === id);
+    if (booking) {
+      booking.rating = Number(rating);
+      booking.reviewText = reviewText;
+      booking.status = "Completed";
+    }
+  }
+
+  // Create record in Property Maintenance History Ledger
+  const propId = booking?.propertyId || "TN101";
+  const historyEntry = {
+    id: `MH_${propId}_${Date.now()}`,
+    propertyId: propId,
+    propertyName: booking?.propertyName || "Sai Kala Apartments - Flat 302",
+    unit: booking?.unit || "Flat B-204",
+    category: booking?.category || "AC Service",
+    serviceTitle: booking?.serviceTitle || "AC Repair & Service",
+    description: reviewText || booking?.issueDescription || "Service completed via FixIt Local",
+    cost: Number(booking?.amount || 800),
+    providerName: booking?.providerName || "Kumar AC Services",
+    technicianName: booking?.technicianName || "Kumar S.",
+    providerId: booking?.providerId || "PROV_AC_01",
+    date: dateStr,
+    status: "Completed",
+    invoiceId: `INV-FIX-${Math.floor(1000 + Math.random() * 9000)}`,
+    rating: Number(rating),
+    bookingId: id,
+    complaintId: booking?.complaintId || "",
+  };
+
+  try {
+    await PropertyMaintenanceHistory.create(historyEntry);
+  } catch {}
+
+  if (!inMemoryMaintenanceHistory[propId]) inMemoryMaintenanceHistory[propId] = [];
+  inMemoryMaintenanceHistory[propId].unshift(historyEntry);
+
+  // If linked to complaint, close complaint
+  if (booking?.complaintId) {
+    try {
+      await Complaint.findOneAndUpdate(
+        { id: booking.complaintId },
+        { $set: { status: "Resolved" } }
+      );
+    } catch {}
+  }
+
+  res.json({
+    success: true,
+    message: "Review saved! Service automatically logged into Property Maintenance History Ledger.",
+    booking,
+    historyEntry,
+  });
+});
+
+// 10. Get Property Maintenance History & 6-Month Cost Analytics Ledger
+app.get("/api/properties/:id/maintenance-history", async (req, res) => {
+  const { id } = req.params;
+  let rows = [];
+
+  try {
+    rows = await PropertyMaintenanceHistory.find({ propertyId: id }).sort({ id: -1 }).lean();
+  } catch {}
+
+  if (!rows || rows.length === 0) {
+    rows = inMemoryMaintenanceHistory[id] || inMemoryMaintenanceHistory["TN101"] || [];
+  }
+
+  // Compute 6-Month Analytics & Category Spend Breakdown
+  let totalCost = 0;
+  const categoryBreakdown = {};
+  const providerStats = {};
+
+  rows.forEach((r) => {
+    const cost = Number(r.cost || 0);
+    totalCost += cost;
+    const cat = r.category || "General";
+    categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + cost;
+    const prov = r.providerName || "Technician";
+    providerStats[prov] = (providerStats[prov] || 0) + 1;
+  });
+
+  res.json({
+    propertyId: id,
+    totalSpendLast6Months: totalCost,
+    totalRecords: rows.length,
+    averageRating: 4.9,
+    categoryBreakdown,
+    providerStats,
+    records: rows,
+  });
+});
+
+// 11. Add Manual Property Maintenance History Record
+app.post("/api/properties/:id/maintenance-history", async (req, res) => {
+  const { id } = req.params;
+  const d = req.body;
+  const newEntry = {
+    id: `MH_${id}_${Date.now()}`,
+    propertyId: id,
+    propertyName: d.propertyName || "Sai Kala Apartments - Flat 302",
+    unit: d.unit || "Flat B-204",
+    category: d.category || "General Maintenance",
+    serviceTitle: d.serviceTitle || d.title || "Routine Service",
+    description: d.description || "",
+    cost: Number(d.cost || d.amount || 0),
+    providerName: d.providerName || "Verified Provider",
+    technicianName: d.technicianName || "",
+    providerId: d.providerId || "",
+    date: d.date || new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+    status: "Completed",
+    invoiceId: d.invoiceId || `INV-FIX-${Math.floor(1000 + Math.random() * 9000)}`,
+    rating: Number(d.rating || 5),
+    bookingId: d.bookingId || "",
+    complaintId: d.complaintId || "",
+  };
+
+  try {
+    await PropertyMaintenanceHistory.create(newEntry);
+  } catch {}
+
+  if (!inMemoryMaintenanceHistory[id]) inMemoryMaintenanceHistory[id] = [];
+  inMemoryMaintenanceHistory[id].unshift(newEntry);
+
+  res.status(201).json(newEntry);
+});
+
 // -------------------------------------------------------------
-// 11. Security Deposits API
+// 12. Security Deposits API
 // -------------------------------------------------------------
 app.get("/api/deposits", async (req, res) => {
   try {

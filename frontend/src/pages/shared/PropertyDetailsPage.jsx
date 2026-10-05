@@ -14,6 +14,11 @@ import {
   UTILITY_BILLS,
   MAINTENANCE_REQUESTS,
 } from "../../data/db.js";
+import PropertyMaintenanceHistoryCard from "../../components/fixit/PropertyMaintenanceHistoryCard.jsx";
+import PreferredProvidersCard from "../../components/fixit/PreferredProvidersCard.jsx";
+import FixItDispatchModal from "../../components/fixit/FixItDispatchModal.jsx";
+import LiveTrackingModal from "../../components/fixit/LiveTrackingModal.jsx";
+import ServiceReviewModal from "../../components/fixit/ServiceReviewModal.jsx";
 
 export default function PropertyDetailsPage() {
   const { id } = useParams();
@@ -38,6 +43,9 @@ export default function PropertyDetailsPage() {
   // Modals
   const [showChatModal, setShowChatModal] = useState(false);
   const [showVisitModal, setShowVisitModal] = useState(false);
+  const [dispatchTicket, setDispatchTicket] = useState(null);
+  const [trackingBooking, setTrackingBooking] = useState(null);
+  const [reviewBooking, setReviewBooking] = useState(null);
   const [toast, setToast] = useState(null);
 
   const showToastMsg = (msg) => {
@@ -855,49 +863,102 @@ export default function PropertyDetailsPage() {
       )}
 
       {activeTab === "maintenance" && (
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <h3>Property Maintenance Ledger</h3>
-              <p className="card-subtitle">Inspection history and service tickets for {property.name}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Landlord Preferred Service Providers Tree */}
+          <PreferredProvidersCard
+            propertyId={property.id}
+            unit={property.unit || "Flat B-204"}
+          />
+
+          {/* Property Maintenance History & Cost Ledger Card */}
+          <PropertyMaintenanceHistoryCard
+            propertyId={property.id}
+            propertyName={property.name}
+            unit={property.unit || "Flat B-204"}
+          />
+
+          {/* Logged Maintenance Tickets */}
+          <div className="card">
+            <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <h3>Logged Maintenance Tickets</h3>
+                <p className="card-subtitle">Active and past service requests for {property.name}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ fontSize: "12px", padding: "7px 16px", background: "linear-gradient(135deg, #0284c7 0%, #2563eb 100%)", fontWeight: 700 }}
+                onClick={() =>
+                  setDispatchTicket({
+                    id: `MNT_${Date.now()}`,
+                    propertyId: property.id,
+                    propertyName: property.name,
+                    unit: property.unit || "Flat B-204",
+                    issue: "AC cooling problem - inspection & jet clean",
+                    tenantName: tenant?.name || "Resident",
+                  })
+                }
+              >
+                ⚡ FixIt Dispatch (Book Pro)
+              </button>
             </div>
-          </div>
-          <div className="table-responsive">
-            <table>
-              <thead>
-                <tr>
-                  <th>Ticket ID</th>
-                  <th>Title</th>
-                  <th>Category</th>
-                  <th>Priority</th>
-                  <th>Logged Date</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {maintenanceTickets.map((m) => (
-                  <tr key={m.id}>
-                    <td><strong>{m.id}</strong></td>
-                    <td>{m.title || m.issue}</td>
-                    <td>{m.category || "General"}</td>
-                    <td>
-                      <span className={`pill ${m.priority.toLowerCase()}`}>{m.priority}</span>
-                    </td>
-                    <td>{m.date}</td>
-                    <td>
-                      <span className={`pill ${m.status.toLowerCase()}`}>{m.status}</span>
-                    </td>
-                  </tr>
-                ))}
-                {maintenanceTickets.length === 0 && (
+            <div className="table-responsive">
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={6} className="empty">
-                      No maintenance tickets logged for this unit.
-                    </td>
+                    <th>Ticket ID</th>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Priority</th>
+                    <th>Logged Date</th>
+                    <th>Status</th>
+                    <th>FixIt Action</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {maintenanceTickets.map((m) => (
+                    <tr key={m.id}>
+                      <td><strong>{m.id}</strong></td>
+                      <td>{m.title || m.issue}</td>
+                      <td>{m.category || "General"}</td>
+                      <td>
+                        <span className={`pill ${m.priority.toLowerCase()}`}>{m.priority}</span>
+                      </td>
+                      <td>{m.date}</td>
+                      <td>
+                        <span className={`pill ${m.status.toLowerCase()}`}>{m.status}</span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          style={{ padding: "4px 8px", fontSize: "11px", color: "#0284c7", borderColor: "#bae6fd", fontWeight: 700 }}
+                          onClick={() =>
+                            setDispatchTicket({
+                              id: m.id,
+                              propertyId: property.id,
+                              propertyName: property.name,
+                              unit: property.unit || "Flat B-204",
+                              issue: m.title || m.issue,
+                              tenantName: tenant?.name || "Resident",
+                            })
+                          }
+                        >
+                          ⚡ Dispatch Pro
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {maintenanceTickets.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="empty">
+                        No active maintenance tickets pending for this unit.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -917,6 +978,43 @@ export default function PropertyDetailsPage() {
           onClose={() => setShowVisitModal(false)}
           onSuccess={() => {
             setToast(`Visit request for ${property.name} submitted successfully!`);
+          }}
+        />
+      )}
+
+      {/* FixIt Local Dispatch Modal */}
+      {dispatchTicket && (
+        <FixItDispatchModal
+          complaint={dispatchTicket}
+          onClose={() => setDispatchTicket(null)}
+          onSuccess={(newBooking) => {
+            setDispatchTicket(null);
+            showToastMsg(`🎉 Technician Dispatched! ${newBooking.technicianName || "Kumar S."} is on the way.`);
+            setTrackingBooking(newBooking);
+          }}
+        />
+      )}
+
+      {/* Live GPS Tracking Modal */}
+      {trackingBooking && (
+        <LiveTrackingModal
+          booking={trackingBooking}
+          onClose={() => setTrackingBooking(null)}
+          onServiceCompleted={(completedBooking) => {
+            setTrackingBooking(null);
+            setReviewBooking(completedBooking);
+          }}
+        />
+      )}
+
+      {/* Service Review Modal */}
+      {reviewBooking && (
+        <ServiceReviewModal
+          booking={reviewBooking}
+          onClose={() => setReviewBooking(null)}
+          onSubmitted={() => {
+            setReviewBooking(null);
+            showToastMsg("⭐ Review saved! Recorded into Property Maintenance History Ledger.");
           }}
         />
       )}

@@ -12,6 +12,9 @@ import {
   updateMaintenance,
   deleteMaintenance,
 } from "../../utils/apiClient.js";
+import FixItDispatchModal from "../../components/fixit/FixItDispatchModal.jsx";
+import LiveTrackingModal from "../../components/fixit/LiveTrackingModal.jsx";
+import ServiceReviewModal from "../../components/fixit/ServiceReviewModal.jsx";
 
 const STATUS_FLOW = ["Open", "Assigned", "In Progress", "Completed", "Closed"];
 
@@ -28,6 +31,11 @@ export default function MaintenancePage() {
   const [editingTicket, setEditingTicket] = useState(null);
   const [deletingTicket, setDeletingTicket] = useState(null);
   const [toast, setToast] = useState(null);
+
+  // FixIt Local Modals
+  const [dispatchTicket, setDispatchTicket] = useState(null);
+  const [trackingBooking, setTrackingBooking] = useState(null);
+  const [reviewBooking, setReviewBooking] = useState(null);
 
   const initialTicket = {
     issueText: "",
@@ -227,30 +235,93 @@ export default function MaintenancePage() {
     },
     {
       key: "actions",
-      label: "Actions",
-      render: (r) => (
-        <div style={{ display: "flex", gap: "6px" }}>
-          {r.status !== "Completed" && r.status !== "Closed" ? (
+      label: "FixIt Dispatch & Actions",
+      render: (r) => {
+        const isOpen = r.status === "Open" || r.status === "Assigned";
+        const isDispatched = r.status === "FixIt Dispatched" || r.status === "In Progress";
+        const isResolved = r.status === "Completed" || r.status === "Closed";
+
+        return (
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+            {isOpen && (
+              <button
+                className="btn-primary"
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "11px",
+                  background: "linear-gradient(135deg, #0284c7 0%, #2563eb 100%)",
+                  fontWeight: 700,
+                  boxShadow: "0 2px 4px rgba(2, 132, 199, 0.3)",
+                }}
+                onClick={() =>
+                  setDispatchTicket({
+                    id: r.id,
+                    propertyId: r.propertyId || "TN101",
+                    propertyName: r.propName || "Sai Kala Apartments - Flat 302",
+                    unit: r.unit || "Flat B-204",
+                    issue: r.issueDisplay || r.issueText || "Maintenance Repair",
+                    category: r.category || "AC Repair",
+                    tenantName: r.tenantName || "Resident",
+                  })
+                }
+              >
+                ⚡ FixIt Dispatch
+              </button>
+            )}
+
+            {isDispatched && (
+              <button
+                className="btn-primary"
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "11px",
+                  background: "#0284c7",
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                onClick={() =>
+                  setTrackingBooking({
+                    id: r.bookingId || `BK_FIX_${r.id}`,
+                    unit: r.unit || "Flat B-204",
+                    propertyName: r.propName || "Sai Kala Apartments",
+                    serviceTitle: r.issueDisplay || "AC Repair & Service",
+                    providerName: "Kumar AC Services",
+                    technicianName: "Kumar S.",
+                    technicianPhone: "+91 98765 00001",
+                    status: "On The Way",
+                    amount: 800,
+                  })
+                }
+              >
+                📍 Track Live GPS
+              </button>
+            )}
+
+            {!isResolved ? (
+              <button
+                className="btn-outline"
+                style={{ padding: "4px 8px", fontSize: "11px" }}
+                onClick={() => advanceStatus(r.id)}
+              >
+                Advance →
+              </button>
+            ) : (
+              <span className="pill active" style={{ fontSize: "11px" }}>✓ Resolved</span>
+            )}
+
             <button
-              className="btn-primary"
-              style={{ padding: "4px 8px", fontSize: "11px" }}
-              onClick={() => advanceStatus(r.id)}
+              className="btn-outline"
+              style={{ padding: "4px 8px", fontSize: "11px", color: "var(--danger)" }}
+              onClick={() => setDeletingTicket(r)}
+              title="Delete Ticket"
             >
-              Advance →
+              🗑️
             </button>
-          ) : (
-            <span className="pill active" style={{ fontSize: "11px" }}>✓ Resolved</span>
-          )}
-          <button
-            className="btn-outline"
-            style={{ padding: "4px 8px", fontSize: "11px", color: "var(--danger)" }}
-            onClick={() => setDeletingTicket(r)}
-            title="Delete Ticket"
-          >
-            🗑️
-          </button>
-        </div>
-      ),
+          </div>
+        );
+      },
     },
   ];
 
@@ -537,6 +608,57 @@ export default function MaintenancePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* FixIt Local Dispatch Modal */}
+      {dispatchTicket && (
+        <FixItDispatchModal
+          complaint={dispatchTicket}
+          onClose={() => setDispatchTicket(null)}
+          onSuccess={(newBooking) => {
+            setDispatchTicket(null);
+            showToast(`⚡ Technician Dispatched! ${newBooking.technicianName || "Service Provider"} is on the way.`);
+            setRequests((prev) =>
+              prev.map((r) =>
+                r.id === dispatchTicket.id
+                  ? { ...r, status: "FixIt Dispatched", bookingId: newBooking.id, vendor: newBooking.providerName }
+                  : r
+              )
+            );
+            setTrackingBooking(newBooking);
+          }}
+        />
+      )}
+
+      {/* Live GPS Tracking Modal */}
+      {trackingBooking && (
+        <LiveTrackingModal
+          booking={trackingBooking}
+          onClose={() => setTrackingBooking(null)}
+          onServiceCompleted={(completedBooking) => {
+            setTrackingBooking(null);
+            setRequests((prev) =>
+              prev.map((r) =>
+                r.bookingId === completedBooking.id || r.id === completedBooking.complaintId
+                  ? { ...r, status: "Completed" }
+                  : r
+              )
+            );
+            setReviewBooking(completedBooking);
+          }}
+        />
+      )}
+
+      {/* Service Review Modal */}
+      {reviewBooking && (
+        <ServiceReviewModal
+          booking={reviewBooking}
+          onClose={() => setReviewBooking(null)}
+          onSubmitted={() => {
+            setReviewBooking(null);
+            showToast("⭐ Service review recorded into Property Maintenance History!");
+          }}
+        />
       )}
     </div>
   );
